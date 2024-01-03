@@ -16,3 +16,4 @@ individual trajectories are predicted using the Best Linear Unbiased Estimator (
 predictions are plotted alongside each other and the mean predicted response of the CD4 cell
 count over time.
 
+[Link to analysis](https://glangan.github.io/CD4-Longitudinal/)
