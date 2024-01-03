@@ -307,6 +307,14 @@ summary(mod.exp.rand)
 AIC(mod.exp.rand, mod.gau.rand, mod.rand1)
 ```
 
+```{r}
+# Final model
+mod <- lme(CD4sqrt ~ Time + Packs + Drugs + Cesd, 
+                    random= ~ Time | ID, corr=corGaus(, form= ~ Time | ID,nugget=TRUE,value=c(2,.1)),
+data=data)
+summary(mod)
+```   
+
 Comparing the AIC values for all the models considered so far, we can say that the
 random effect model with Gaussian correlation structure is a better model. The Gaussian correlation structure model with random effects can also be written as:
 
@@ -319,6 +327,73 @@ correlation between the two random effect variables is 0.103.
 
 ### Application to Individual Trajectories
 
+A patient was selected from the CD4 data, with measurement spread roughly evenly over
+Time = 0.
 
+```{R}
+# find patient
+selected <- data %>% 
+  filter((Time <= -1.5 & obsnum >= 3) | (Time >= 1.5 & obsnum >= 6)) 
 
-  
+IDs <- unique(selected$ID)
+sel.data <- data %>% filter(ID %in% IDs)
+
+ggplot(data = sel.data[sel.data$ID==10569,], aes(x=Time, y = CD4sqrt)) + 
+  geom_line() + 
+  ggtitle("CD4sqrt vs Time (Patient ID 10569)")
+```
+
+```{R}
+# Covariance matrix
+covmat <- getVarCov(mod, individual = "10569", type = 'marginal')
+cormat <- round(cov2cor(covmat$"10569"), 3)
+cormat
+```
+From the correlation matrix for the selected patient, we can see that the
+correlation is decreasing with time of observation.
+
+Next, we select three patients using the same criteria. We use the Best Linear Unbiased
+Predictor (BLUP) and the chosen model to predict the individual trajectories.
+
+```{r}
+# BLUP
+patient1 <- subset(data, ID == 10569)
+patient2 <- subset(data, ID == 11172)
+patient3 <- subset(data, ID == 20363)
+
+plot(CD4sqrt~Time,data=patient1,pch=4, col="red",xlim=c(-3,3),xlab="Time",ylab="sqrtCD4")
+points(CD4sqrt~Time,data=patient2,pch=3, col="blue")
+points(CD4sqrt~Time,data=patient3,pch=3, col="green")
+
+t3 <- seq(-3,3,0.01)
+t2 <- seq(-3,3,0.01)
+t1 <- seq(-3,3,0.01)
+t0 <- seq(-3,3,0.01)
+incpt<-rep(1,length(t1))
+X<-cbind(incpt,t3,t2,t1,t0)
+incpt<- cbind(incpt, t0)
+
+pmean<-X%*%mod$coefficients$fixed
+
+lines(t1,pmean,lty=1,lwd=3)
+l1<-incpt%*%mod$coefficients$random$ID["10569",]+pmean
+lines(t1,l1,col="red",lty=1,lwd=2)
+
+l2<-incpt%*%mod$coefficients$random$ID["11172",]+pmean
+lines(t1,l2,col="blue",lty=1,lwd=2)
+
+l3<-incpt%*%mod$coefficients$random$ID["20363",]+pmean
+lines(t1,l3,col="green",lty=1,lwd=2)
+```
+
+The observed level of CD4 cell counts are also shown on the plot. As the random effect model has random intercept as well as random slope for time, which is shown in the separate trajectories.
+
+In this project, we used exploratory data analysis to visualize several predictor variables with
+respect to the response variable, CD4 cell count. In the preliminary models, the spline model
+with six knots was slightly better than the other simpler models. A simple model with linear
+variables with no knots was chosen for further analysis. Several different covariance structure were fitted and compared using AIC. Model with exponential covariance structure was found
+to be better.
+
+The models including random effects and different correlation structures were analysed
+next. A model with random effect on time and Gaussian correlation structure was found to
+be better than all the models considered previously.
