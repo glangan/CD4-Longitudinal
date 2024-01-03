@@ -15,3 +15,4 @@ Finally, few patients with time evenly divided on either side of Time = 0 are se
 individual trajectories are predicted using the Best Linear Unbiased Estimator (BLUP). The
 predictions are plotted alongside each other and the mean predicted response of the CD4 cell
 count over time.
+
