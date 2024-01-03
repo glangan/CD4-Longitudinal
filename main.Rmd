@@ -1,0 +1,109 @@
+---
+title: "CD4 Cell Count - Longitudinal Data Analysis   "
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(splines)
+library(nlme)
+library(GGally)
+```
+
+## Introduction
+
+The average interval from infection by the human immune-deficiency virus (HIV) to AIDS is estimated to be approximately 11 years. major difficulty in studying progression of HIV infection is that an unreasonably long follow-up is necessary to observe a large cohort over the entire incubation period from infection to disease. An alternative to monitoring the presence or absence of AIDS is to follow a surrogate marker of disease progression for shorter intervals.
+
+HIV destroys T-lymphocytes called CD4 cells, which play a vital role in immune function. Disease progression can be assessed by measuring the number or percent of CD4 cells, which on average decrease throughout the disease incubation period.
+
+The project uses the CD4 dataset, the response variable is CD4+ cell count. The dataset consists of longitudinally collected observations on 369 subjects, resulting in a total of
+2376 observations of CD4 cell counts denoted CD4 in the dataset. Other variables collected are:
+
+1. Time: as the time (in years) since seroconversion, where a negative time denotes actual time
+before seroconversion.
+2. Age: age at seroconversion (a baseline measurement), centred at 30 years of age, so that negative
+ages denote years younger than 30.
+3. Packs: the number of packets of cigarettes smoked per day at time of measurement.
+4. Drugs: a binary variable taking the values 1 or 0 to denote if the respondent takes recreational
+drugs or not respectively, measured at each time point.
+5. Sex: number of sexual partners reported at each time point. Looks to have been centred somehow
+and truncated at ±5.
+6. Cesd: an index of depression measured at each time point, with time trends removed. Higher
+scores indicate greater depressive symptoms.
+
+## Exploratory Data Analysis
+
+```{R}
+# Load data
+data <- read.table("./cd4data.txt", header = TRUE)
+data$CD4sqrt <- sqrt(data$CD4)
+```
+
+```{r}
+ggpairs(data = data[,c(1, 3, 4, 5, 6,7 ,9)])
+```
+
+In the first step of exploratory data anslysis of CD4 data, we plot a pairs plot of the dataset. From the plot it can be seen that the square root of CD4 cell count is roughly normally
+distributed. Therefore, square root of CD4 cell count will be used as response variable in
+further analysis. The CD4 cell count is negatively correlated with time sand slightly positively
+correlated with Packs, Drugs and Sex variables.
+
+```{r}
+p1 <- ggplot(data = data, aes(x = Time, y = CD4sqrt)) + 
+  geom_point() + 
+  geom_smooth(method = 'loess', se=FALSE) + 
+  ggtitle("sqrtCD4 vs Time")
+print(p1)
+```
+
+The CD4+ cell number are constant until the time of seroconversion i.e. Time = 0,
+after that the cell number appear to be decreasing. Overall, there seems to be a decreasing
+trend in the CD4 cell count with time.
+
+```{r}
+# plot smoothed curve of cell count wrt drug use
+df1 <- data %>% filter(Drugs==0) %>% group_by(Time) %>% summarise(mean_cd4 = mean(CD4sqrt))
+df2 <- data %>% filter(Drugs==1) %>% group_by(Time) %>% summarise(mean_cd4 = mean(CD4sqrt))
+
+p1 <- ggplot() + geom_smooth(data = df1, aes(x = Time, y = mean_cd4), method=
+                               "loess", se=FALSE) + 
+  geom_smooth(data = df2, aes(x = Time, y = mean_cd4), method="loess", se=FALSE, color="red") + ggtitle("Mean sqrtCD4 vs Time (Drug use)") + ylab("Mean sqrtCD4")
+plot(p1)
+```
+
+```{r}
+df1 <- data %>% filter(Age <= quantile(data$Age, 0.25)) %>% group_by(Time) %>% summarise(mean_cd4 = mean(CD4sqrt))
+df2 <- data %>% filter(Age >= quantile(data$Age, 0.75)) %>% group_by(Time) %>% summarise(mean_cd4 = mean(CD4sqrt))
+
+p2 <- ggplot() + geom_smooth(data = df1, aes(x = Time, y = mean_cd4), method=
+                               "loess", se=FALSE) + 
+  geom_smooth(data = df2, aes(x = Time, y = mean_cd4), method="loess", se=FALSE, color="red") + ggtitle("Mean sqrtCD4 vs Time (Age)") + ylab("Mean sqrtCD4")
+plot(p2)
+```
+
+```{r}
+df1 <- data %>% filter(Cesd <= quantile(data$Cesd, 0.25)) %>% group_by(Time) %>% summarise(mean_cd4 = mean(CD4sqrt))
+df2 <- data %>% filter(Cesd >= quantile(data$Cesd, 0.75)) %>% group_by(Time) %>% summarise(mean_cd4 = mean(CD4sqrt))
+
+p3 <- ggplot() + geom_smooth(data = df1, aes(x = Time, y = mean_cd4), method=
+                               "loess", se=FALSE) + 
+  geom_smooth(data = df2, aes(x = Time, y = mean_cd4), method="loess", se=FALSE, color="red") + ggtitle("Mean sqrtCD4 vs Time (CESD)") + ylab("Mean sqrtCD4")
+plot(p3)
+```
+
+```{r}
+df1 <- data %>% filter(Packs <= quantile(data$Packs, 0.25)) %>% group_by(Time) %>% summarise(mean_cd4 = mean(CD4sqrt))
+df2 <- data %>% filter(Packs >= quantile(data$Packs, 0.75)) %>% group_by(Time) %>% summarise(mean_cd4 = mean(CD4sqrt))
+
+p4 <- ggplot() + geom_smooth(data = df1, aes(x = Time, y = mean_cd4), method=
+                               "loess", se=FALSE) + 
+  geom_smooth(data = df2, aes(x = Time, y = mean_cd4), method="loess", se=FALSE, color="red") + ggtitle("Mean sqrtCD4 vs Time (Smoking)") + ylab("Mean sqrtCD4")
+plot(p4)
+```
+
+There seems to be a clear gap in the mean responses of CD4 cell count when
+stratified by drug use and smoking. Age and Cesd index seems to have no effect on the CD4
+cell count. The effects of these variables will be studied in the preliminary models discussed
+in the next section.
+  
