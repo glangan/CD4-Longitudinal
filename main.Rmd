@@ -106,4 +106,219 @@ There seems to be a clear gap in the mean responses of CD4 cell count when
 stratified by drug use and smoking. Age and Cesd index seems to have no effect on the CD4
 cell count. The effects of these variables will be studied in the preliminary models discussed
 in the next section.
+
+# Model Formulation
+
+To start with the model selection and analysis, we use the full model with seven knots as
+given in Zeger and Diggle (1994). According to the fit of the full model, the Age and Sex
+variables are not significant at 5% level of significance. Therefore, in further models, these
+variables are excluded. The full model is further simplified to decrease the number of knots
+and one model with no knots. The following preliminary models are considered:
+1. Full model with all the variables and seven knots at equal intervals
+2. Model with variables: smoking, Cest index, Drug and time, with two knots at T=0,2
+3. Model with variables: Smoking, Cest index, Drug and time
+4. Model with variables: Smoking, Cest index, Drug and time with one knot at T=0
+
+```{r}
+# Full model with 7 knots
+Time.range <- range(data$Time)
+n.knots <- 7
+knot.spacing <- diff(Time.range)/(n.knots+1)
+Time.knots <- seq(Time.range[1], Time.range[2], knot.spacing)[-c(1,(n.knots+2))]
+model1 <- lm(CD4sqrt ~ ns(Time,knots = Time.knots) + 
+               Age + Packs + Drugs + Cesd + Sex, data = data)
+summary(model1)
+```
+
+```{r}
+# Model with two knots at Time = 0 and Time = 2 and excluding Age and Sex
+model2 <- lm(CD4sqrt ~ ns(Time,knots = c(0, 2)) + 
+               Packs + Drugs + Cesd, data = data)
+summary(model2)
+```
+
+```{r}
+# Model with four predictor variables
+model3 <- lm(CD4sqrt ~ Time + Packs + Drugs + Cesd, data = data)
+summary(model3)
+```
+
+```{r}
+# Piecewise linear model
+data$Timesp <- data$Time*(data$Time >= 0)
+model4 <- lm(CD4sqrt ~ Time + Timesp + Packs + Drugs + Cesd, data = data)
+summary(model4)
+```
+
+```{r}
+# Comparing the models
+AIC(model1, model2, model3, model4)
+```
+
+The full model with seven knots is slightly better performing model among all the models considered. The model with four variables is better performing than the model with one knot at Time=0. We will choose model with four variables: Time, Smoking, Drugs and Cesd for further analysis as there is not much difference in all the models considered. 
+
+We can see that all the variables considered in this model are significant at 5% level of significance. This model can also be written as:
+
+$$
+sqrtCD4 = 26.29 − 1.621 ×    Time + 0.989 × Packs + 1.059 × Drugs − 0.034 × Cesd
+$$
+
+The coefficients for Time and Cesd are negative, which means that CD4 cell count is
+decreasing over time and with increasing Cesd score. The coefficients for Packs and Drugs is
+positive, which means that the cell count is increasing with increased smoking and drug use.
+
+```{r warning=FALSE}
+# Model 3 residuals
+data$resid <- resid(model3)
+data$yr <- round(data$Time)
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor) {
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y, use = "pairwise.complete.obs"))
+  txt <- format(c(r, 0.123456789), digits=digits)[1]
+  txt <- paste(prefix, txt, sep="")
+  if(missing(cex.cor)) cex <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex * r)
+}
+data.wide <- reshape(data[,c("ID", "resid", "yr")],
+  direction = "wide", v.names = "resid",
+  timevar = "yr", idvar = "ID")
+pairs(data.wide[,c(5, 2, 3, 6:8)], upper.panel = panel.cor)
+```
+
+The correlation is decreasing for the observations that are further apart in time.
+
+```{r}
+# Variogram
+vijk <- by(data, data$ID, function(df) {
+  v <- outer(df$resid, df$resid,
+  function(x, y) 0.5*(x-y)^2)
+  v[lower.tri(v)]
+})
+
+uijk <- by(data, data$ID, function(df) {
+  u <- outer(df$Time, df$Time,
+  function(x, y) abs(x - y))
+  u[lower.tri(u)]
+})
+
+uijk <- unlist(uijk)
+vijk <- unlist(vijk)
+
+vu.lowess <- lowess(uijk, vijk)
+sigma2 <- var(data$resid)
+
+plot(uijk, vijk, col = "gray50", pch = 18, cex = 0.4,
+  xlim = c(0, 6), ylim = c(0, 150),
+  xlab = "Lag", ylab = "Half squared differences")
+lines(vu.lowess, col = "red", lwd = 2)
+abline(h = sigma2, lty = 2)
+```
+The variogram is increasing with increase in lag, which also shows that the correlation is decreasing when observations are further apart in time.
+
+Further in the analysis, we fit model with different covariance structures for patients and
+evaluate the fit. The following models are considered:
+1. Model with compound symmetry covariance structure.
+2. Model with unequal variances for each patient.
+3. Model with exponential covariance structure.
+4. Model with Gaussian covariance structure.
+
+```{r}
+data <- data %>% group_by(ID) %>%
+            mutate(obsnum = seq_along(ID)) %>%
+            ungroup()
+```   
+
+```{r}
+# Compound Symmetry
+modcov.cc <- gls(CD4sqrt ~ Time + Packs + Drugs + Cesd,
+                    correlation = corCompSymm(form = ~ obsnum | ID),
+                    weights = varIdent(form = ~ 1 | obsnum),
+                    data = data)
+summary(modcov.cc)
+```
+
+
+```{r}
+# Unequal variances
+modcov.uv <- gls(CD4sqrt ~ Time + Packs + Drugs + Cesd,
+                    weights = varIdent(form = ~ 1 | obsnum),
+                    data = data)
+summary(modcov.uv)
+```
+
+```{r}
+# Exponential covariance structure
+modcov.exp <- gls(CD4sqrt ~ Time + Packs + Drugs + Cesd,
+                    correlation = corExp(form = ~ obsnum | ID),
+                    data = data)
+summary(modcov.exp)
+```
+
+```{r}
+# Gaussian covariance structure
+modcov.gaus <- gls(CD4sqrt ~ Time + Packs + Drugs + Cesd,
+                    correlation = corGaus(form = ~ obsnum | ID),
+                    data = data)
+summary(modcov.gaus)
+```
+
+```{r}
+# comparing models
+AIC(model1, model3, modcov.cc, modcov.uv, modcov.exp, modcov.gaus)
+```
+
+From the table, it can be seen that the model with exponential covariance structure fits the data adequately. The value of estimated parameter θ in the exponential model is 2.077. Also, comparing with the preliminary models, these models perform better.
+
+Now, we will consider adding random effects to the fixed effects already modeled previously.
+The random effect models include random effect for time variable. The following
+models are considered:
+1. Random effect for Time with no correlation structure.
+2. Random effect for Time with exponential correlation structure.
+3. Random effect for Time with Gaussian correlation structure.
+
+```{r}
+# Random effect model
+mod.rand1 <- lme(CD4sqrt ~ Time + Packs + Drugs + Cesd, 
+                 random  = ~ Time | ID,
+                 data = data)
+
+summary(mod.rand1)
+```
+
+```{r}
+# Random effect model with Gaussian correlation structure
+mod.gau.rand <- lme(CD4sqrt ~ Time + Packs + Drugs + Cesd, 
+                    random= ~ Time | ID, corr=corGaus(, form= ~ Time | ID,nugget=TRUE,value=c(2,.1)),
+data=data)
+summary(mod.gau.rand)
+```
+
+```{r}
+# Random effect model with exponential correlation structure
+mod.exp.rand <- lme(CD4sqrt ~ Time + Packs + Drugs + Cesd, 
+                    random= ~ Time | ID, corr=corExp(, form= ~ Time | ID,nugget=TRUE,value=c(2,.1)),
+data=data)
+summary(mod.exp.rand)
+```
+
+```{r}
+# Comparing models  
+AIC(mod.exp.rand, mod.gau.rand, mod.rand1)
+```
+
+Comparing the AIC values for all the models considered so far, we can say that the
+random effect model with Gaussian correlation structure is a better model. The Gaussian correlation structure model with random effects can also be written as:
+
+$$
+sqrtCD4 = β_1 + β_2 \times Time + β_3 × Packs + β_4 × Drugs + β_5 × Cesd + b_1 + b_2 \times Time
+$$
+
+The variance of parameter b1 is 3.707 and the variance of parameter b2 is 1.144. The
+correlation between the two random effect variables is 0.103.
+
+### Application to Individual Trajectories
+
+
+
   
